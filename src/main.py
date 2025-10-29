@@ -5,6 +5,8 @@ import argparse
 from enum import Enum
 from collections import Counter
 from typing import Dict, Tuple, List, Optional
+import os
+import hashlib
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,7 +18,8 @@ class QConfig(BaseModel):
     epsilon: float
     alpha: float
     gamma: float
-    decay_rate: float
+    alpha_decay_rate: float
+    epsilon_decay_rate: float
 
 
 class DisplayConfig(BaseModel):
@@ -39,6 +42,7 @@ class Payoffs:
 
         self.benefit: float = payoff_dict.get("B")
         self.cost: float = payoff_dict.get("C")
+
         self.strategy_payoffs()
 
     def strategy_payoffs(self) -> None:
@@ -59,13 +63,16 @@ class Player:
         }
 
     def move(self, role_array: np.ndarray) -> Action:
-        action: Action = (
-            random.choice(list(self.qtable))
-            if random.random() < self.constants.epsilon
-            else max(self.qtable, key=self.qtable.get)
-        )
+        if random.random() < self.constants.epsilon:
+            action = random.choice(list(self.qtable))
+        else:
+            max_q = max(self.qtable.values())
+            best_actions = [a for a, q in self.qtable.items() if q == max_q]
+            action = random.choice(best_actions)
 
-        self.constants.alpha *= self.constants.decay_rate
+        self.constants.alpha *= self.constants.alpha_decay_rate
+        self.constants.epsilon *= self.constants.epsilon_decay_rate
+
         role_array[self.index] = action.value
         return action
 
@@ -92,11 +99,14 @@ class Sandbox:
         with open("config.toml", "rb") as f:
             config_dict: Dict[str, float] = tomllib.load(f).get("simulation")
 
+        self.payoffs: Payoffs = payoffs
+
         self.config: QConfig = QConfig(
             epsilon=config_dict.get("epsilon"),
             alpha=config_dict.get("alpha"),
             gamma=config_dict.get("gamma"),
-            decay_rate=config_dict.get("decay_rate"),
+            alpha_decay_rate=config_dict.get("alpha_decay_rate"),
+            epsilon_decay_rate=config_dict.get("epsilon_decay_rate"),
         )
         self.display_args = display_args
 
@@ -112,6 +122,9 @@ class Sandbox:
         self.median_filtered_ratios: Optional[np.ndarray] = None
 
         self.cooperator_ratios: np.ndarray | List[float] = []
+        self.converging_values: np.ndarray | List[float] = []
+
+        self.convergence_value: Optional[float] = None
 
     def step(self) -> None:
         index_perm: np.ndarray = np.random.permutation(self.n_agents)
@@ -130,24 +143,29 @@ class Sandbox:
             player_2.update(move_2, move_1)
 
     def run(self, n_steps: int) -> None:
-        for i in range(1, n_steps + 1):
-            print(f"STEP {i}")
+        for _ in range(1, n_steps + 1):
             self.step()
 
             counter: Counter[int] = Counter(self.roles)
-            self.cooperator_ratios.append(
-                counter[Action.COOPERATE.value] / self.n_agents
-            )
+
+            cooperator_ratio = counter[Action.COOPERATE.value] / self.n_agents
+
+            if self.agents[0].constants.epsilon < 0.01:
+                self.converging_values.append(cooperator_ratio)
+            self.cooperator_ratios.append(cooperator_ratio)
 
         self.cooperator_ratios = np.array(self.cooperator_ratios)
+        self.converging_values = np.array(self.converging_values)
+        self.convergence_value = np.mean(self.converging_values)
+
         self.filtered_curve()
 
         plt.plot(
             self.cooperator_ratios,
-            color="lightblue",
+            color="blue",
             alpha=0.7,
             label="Cooperation Ratio",
-            lw=0.2,
+            lw=3.0,
         )
 
         if self.box_filtered_ratios is not None:
@@ -178,15 +196,38 @@ class Sandbox:
         plt.ylabel("Ratio")
         plt.title("Cooperator Ratio Over Time")
         plt.legend()
-
-        plt.ylim(
-            0,
-            1,
-        )
-        plt.yticks(np.arange(0, 1.05, 0.05))
-
+        plt.ylim(0, 1)
         plt.grid(visible=True)
+
+        os.makedirs("runs", exist_ok=True)
+
+        run_params = f"{self.n_agents}_{n_steps}_{self.config.epsilon}_{self.config.alpha}_{self.config.gamma}_{self.config.alpha_decay_rate}_{self.config.epsilon_decay_rate}"
+        run_hash = hashlib.md5(run_params.encode()).hexdigest()[:8]
+        filename = os.path.join("runs", f"run_{run_hash}.png")
+
+        param_text = (
+            f"n={self.n_agents}, steps={n_steps}\n"
+            f"ε={self.config.epsilon:.3f}, α={self.config.alpha:.3f}, γ={self.config.gamma:.3f}\n"
+            f"α-decay={self.config.alpha_decay_rate:.5f}, ε-decay={self.config.epsilon_decay_rate:.5f}"
+        )
+
+        plt.gcf().text(
+            0.02,
+            0.98,
+            param_text,
+            fontsize=6,
+            va="top",
+            ha="left",
+            bbox=dict(
+                facecolor="white", alpha=0.6, edgecolor="none", boxstyle="round,pad=0.3"
+            ),
+        )
+
+        plt.savefig(filename, dpi=300, bbox_inches="tight")
+        print(f"saved plot to {filename}")
+
         plt.show()
+        plt.close()
 
     def filtered_curve(self) -> None:
         window_size = self.display_args.window
@@ -262,3 +303,5 @@ if __name__ == "__main__":
     payoffs = Payoffs()
     sandbox = Sandbox(n_agents, payoffs, display_args)
     sandbox.run(n_steps)
+
+    print(sandbox.convergence_value)

@@ -1,8 +1,9 @@
 [simulation]
-epsilon = 0.2
-alpha = 0.2
-gamma = 0.1
-decay_rate = 0.9999
+epsilon = 0.5
+alpha = 0.01
+gamma = 0
+alpha_decay_rate = 0.9999
+epsilon_decay_rate = 0.9999
 
 [payoffs]
 B = 4
