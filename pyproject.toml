@@ -10,4 +10,5 @@ dependencies = [
     "numpy>=2.3.3",
     "pydantic>=2.12.3",
     "scikit-learn>=1.7.2",
+    "tqdm>=4.67.1",
 ]
