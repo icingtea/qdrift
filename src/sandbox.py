@@ -1,4 +1,5 @@
 import os
+import hashlib
 import tomllib
 import multiprocessing
 from typing import Dict, List, Optional, Any
@@ -285,7 +286,9 @@ class Sandbox:
 
         os.makedirs("runs", exist_ok=True)
 
-        run_id = f"{self.n_agents}{n_steps}{self.config.epsilon}{self.config.alpha}{self.config.gamma}{self.config.alpha_decay_rate}{self.config.epsilon_decay_rate}"
+        run_id = hashlib.sha1(
+            f"{self.n_agents}{n_steps}{self.config.epsilon}{self.config.alpha}{self.config.gamma}{self.config.alpha_decay_rate}{self.config.epsilon_decay_rate}".encode()
+        ).hexdigest()[:8]
         filename = os.path.join("runs", f"run_{run_id}.png")
 
         param_text = (
