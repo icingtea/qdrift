@@ -1,6 +1,7 @@
 import sys
 import argparse
-from typing import Tuple, Optional, Any
+import multiprocessing
+from typing import Tuple, Optional
 
 
 from src.models import (
@@ -68,9 +69,9 @@ def parse_args() -> (
         help="analyze a parameter's trends",
     )
     parser.add_argument(
-        "--param_increment",
-        type=float,
-        help="define the step size for testing.",
+        "--points",
+        type=int,
+        help="define the steps for testing.",
     )
     parser.add_argument(
         "--save_runs",
@@ -104,15 +105,15 @@ def parse_args() -> (
         if args.save_runs:
             sys.exit("ERROR: --save_runs can only be used with --paramtest.")
 
-    if args.param_increment:
+    if args.points:
         if not args.paramtest:
-            sys.exit("ERROR: --param_increment must be used with --paramtest.")
+            sys.exit("ERROR: --points must be used with --paramtest.")
 
-        if args.param_increment >= 1:
-            sys.exit("ERROR: --param_increment must be < 1.")
+        if args.points < 1:
+            sys.exit("ERROR: --points must be > 1.")
     else:
         if args.paramtest:
-            sys.exit("ERROR: --param_increment must be used with --paramtest.")
+            sys.exit("ERROR: --points must be used with --paramtest.")
 
     if not args.run and not args.paramtest:
         sys.exit("ERROR: either --run or --paramtest must be specified.")
@@ -129,19 +130,22 @@ def parse_args() -> (
         args.steps,
         Mode.RUN if args.run else Mode.PARAMTEST,
         args.paramtest if args.paramtest else None,
-        args.param_increment if args.param_increment else None,
+        args.points if args.points else None,
         args.save_runs,
     )
 
 
 def main():
+    if __name__ == "__main__":
+        multiprocessing.set_start_method("spawn", force=True)
+
     (
         display_args,
         n_agents,
         n_steps,
         mode,
         param_type,
-        param_increment,
+        points,
         save_runs,
     ) = parse_args()
     payoffs = Payoffs()
@@ -157,7 +161,7 @@ def main():
     elif (
         mode == Mode.PARAMTEST
         and param_type is not None
-        and param_increment is not None
+        and points is not None
     ):
         sandbox = Sandbox(
             n_agents=n_agents,
@@ -165,7 +169,7 @@ def main():
             payoffs=payoffs,
         )
 
-        sandbox.param_test(param_type, n_steps, param_increment, save_runs)
+        sandbox.param_test(param_type, n_steps, points, save_runs)
 
 
 if __name__ == "__main__":

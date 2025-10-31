@@ -52,8 +52,10 @@ class Payoffs:
         with open(TOML_PATH, "rb") as f:
             payoff_dict = tomllib.load(f).get("payoffs", {})
 
-        self.benefit: float = payoff_dict.get("B", 0.0)
-        self.cost: float = payoff_dict.get("C", 0.0)
+        self.benefit: float = payoff_dict.get("B")
+        self.cost: float = payoff_dict.get("C")
+
+        self.ess = (self.benefit - self.cost) / (self.benefit - (self.cost / 2))
 
         self.strategy_payoffs()
 

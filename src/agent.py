@@ -25,9 +25,7 @@ class Player:
         if random.random() < self.constants.epsilon:
             action = random.choice(list(self.qtable))
         else:
-            max_q = max(self.qtable.values())
-            best_actions = [a for a, q in self.qtable.items() if q == max_q]
-            action = random.choice(best_actions)
+            action = max(self.qtable, key=self.qtable.get)
 
         self.constants.alpha *= self.constants.alpha_decay_rate
         self.constants.epsilon *= self.constants.epsilon_decay_rate
@@ -44,6 +42,7 @@ class Player:
         }
 
         reward = mapping[(self_action, other_action)]
+
         best_future = max(self.qtable.values())
 
         self.qtable[self_action] += self.constants.alpha * (

@@ -1,5 +1,5 @@
 import os
-import hashlib
+import uuid
 import tomllib
 import multiprocessing
 from typing import Dict, List, Optional, Any
@@ -47,31 +47,31 @@ class Sandbox:
                 epsilon=(
                     epsilon 
                     if epsilon is not None 
-                    else config_dict.get("epsilon", 0.1)
+                    else config_dict.get("epsilon")
                 ),
 
                 alpha=(
                     alpha 
                     if alpha is not None 
-                    else config_dict.get("alpha", 0.1)
+                    else config_dict.get("alpha")
                 ),
 
                 gamma=(
                     gamma 
                     if gamma is not None 
-                    else config_dict.get("gamma", 0.9)
+                    else config_dict.get("gamma")
                 ),
 
                 alpha_decay_rate=(
                     alpha_decay_rate
                     if alpha_decay_rate is not None
-                    else config_dict.get("alpha_decay_rate", 0.9999)
+                    else config_dict.get("alpha_decay_rate")
                 ),
                 
                 epsilon_decay_rate=(
                     epsilon_decay_rate
                     if epsilon_decay_rate is not None
-                    else config_dict.get("epsilon_decay_rate", 0.9999)
+                    else config_dict.get("epsilon_decay_rate")
                 )
             )
 
@@ -89,7 +89,7 @@ class Sandbox:
             Player(config=self.config.model_copy(deep=True), payoffs=payoffs, index=i)
             for i in range(n_agents)
         ]
-        self.roles: np.ndarray = np.zeros(shape=n_agents, dtype=int)
+        self.roles: np.ndarray = np.zeros(shape=n_agents, dtype=np.float32)
 
         self.box_filtered_ratios: Optional[np.ndarray] = None
         self.gaussian_filtered_ratios: Optional[np.ndarray] = None
@@ -135,6 +135,8 @@ class Sandbox:
 
         self.filtered_curve()
 
+        print(self.convergence_value)
+
         if save_runs:
             self.display_run(n_steps)
 
@@ -162,10 +164,10 @@ class Sandbox:
         self,
         param_type: Parameter,
         n_steps: int,
-        param_increment: float,
+        points: int,
         save_runs: bool,
     ):
-        param_range = np.arange(0, 1 + param_increment, param_increment)
+        param_range = np.concatenate([[0], np.logspace(-3, 0, points-1)])
 
         arglist = [
             (param_value, param_type.name.lower(), n_steps, save_runs)
@@ -210,14 +212,29 @@ class Sandbox:
         plt.figure(figsize=(8, 5))
 
         plt.plot(param_range, convergences, marker="o", markersize=3, linewidth=1.5)
+
         plt.title(f"{param_type.name.capitalize()} vs Convergence Value", fontsize=14)
         plt.xlabel(param_type.name.capitalize())
         plt.ylabel("Convergence Value")
 
         ax = plt.gca()
 
-        x_ticks = np.arange(0, 1.1, 0.1)
-        y_ticks = np.arange(0, 1.1, 0.1)
+        x_min, x_max = param_range.min(), param_range.max()
+        if x_max <= 1.0:
+            x_ticks = np.linspace(0, x_max, 6)
+        else:
+            x_ticks = np.linspace(0, x_max, 6)
+        
+        y_min, y_max = convergences.min(), convergences.max()
+        y_range = y_max - y_min
+        if y_range <= 0.1:
+            y_ticks = np.linspace(y_min, y_max, 6)
+        else:
+            y_ticks = np.arange(0, 1.1, 0.1)
+
+        ess_line = np.full_like(param_range, self.payoffs.ess)
+        plt.plot(param_range, ess_line, 'r--', linewidth=1, alpha=0.7, label=f'y = ESS ({self.payoffs.ess:.2f})')
+        plt.legend()
 
         ax.set_xticks(x_ticks)
         ax.set_yticks(y_ticks)
@@ -228,6 +245,9 @@ class Sandbox:
 
         filename = f"{param_type.name.lower()}_vs_convergence.png"
         plt.savefig(filename, dpi=300)
+
+        plt.show()
+
         plt.close()
 
     def display_run(
@@ -236,8 +256,11 @@ class Sandbox:
     ):
         plt.figure(figsize=(10, 6))
 
+        x_values = np.arange(len(self.cooperator_ratios))
+
         if self.cooperator_ratios is not None:
             plt.plot(
+                x_values,
                 self.cooperator_ratios,
                 color="blue",
                 alpha=0.7,
@@ -247,6 +270,7 @@ class Sandbox:
 
         if self.box_filtered_ratios is not None:
             plt.plot(
+                x_values,
                 self.box_filtered_ratios,
                 color="darkblue",
                 label="Box Smoothed Cooperation Ratio Curve",
@@ -255,6 +279,7 @@ class Sandbox:
 
         if self.gaussian_filtered_ratios is not None:
             plt.plot(
+                x_values,
                 self.gaussian_filtered_ratios,
                 color="yellow",
                 label="Gaussian Smoothed Cooperation Ratio Curve",
@@ -263,32 +288,47 @@ class Sandbox:
 
         if self.median_filtered_ratios is not None:
             plt.plot(
+                x_values,
                 self.median_filtered_ratios,
                 color="purple",
                 label="Median Smoothed Cooperation Ratio Curve",
                 lw=0.5,
             )
 
+        ess_line = np.full_like(x_values, self.payoffs.ess, dtype=float)
+        plt.plot(
+            x_values, ess_line,
+            'r--', linewidth=1, alpha=0.7,
+            label=f'y = ESS ({self.payoffs.ess:.2f})'
+        )
+
         plt.xlabel("step")
         plt.ylabel("Ratio")
         plt.title("Cooperator Ratio Over Time")
         plt.legend()
-        plt.ylim(0, 1)
+
+        y_min = min(0, self.payoffs.ess - 0.05)
+        y_max = max(1, self.payoffs.ess + 0.05)
+        plt.ylim(y_min, y_max)
         plt.grid(visible=True)
 
         ax = plt.gca()
 
+        if n_steps <= 100:
+            x_ticks = np.arange(0, n_steps + 1, max(1, n_steps // 10))
+        else:
+            x_ticks = np.arange(0, n_steps + 1, n_steps // 10)
+        
         y_ticks = np.arange(0, 1.1, 0.1)
-        ax.set_yticks(y_ticks)
 
+        ax.set_xticks(x_ticks)
+        ax.set_yticks(y_ticks)
         ax.grid(True, which="both", linestyle="--", alpha=0.3)
         ax.minorticks_on()
 
         os.makedirs("runs", exist_ok=True)
 
-        run_id = hashlib.sha1(
-            f"{self.n_agents}{n_steps}{self.config.epsilon}{self.config.alpha}{self.config.gamma}{self.config.alpha_decay_rate}{self.config.epsilon_decay_rate}".encode()
-        ).hexdigest()[:8]
+        run_id = uuid.uuid4()
         filename = os.path.join("runs", f"run_{run_id}.png")
 
         param_text = (
@@ -310,4 +350,6 @@ class Sandbox:
         )
 
         plt.savefig(filename, dpi=300, bbox_inches="tight")
+        plt.show()
+
         plt.close()
