@@ -219,25 +219,18 @@ class Sandbox:
 
         ax = plt.gca()
 
-        x_min, x_max = param_range.min(), param_range.max()
-        if x_max <= 1.0:
-            x_ticks = np.linspace(0, x_max, 6)
-        else:
-            x_ticks = np.linspace(0, x_max, 6)
-        
-        y_min, y_max = convergences.min(), convergences.max()
-        y_range = y_max - y_min
-        if y_range <= 0.1:
-            y_ticks = np.linspace(y_min, y_max, 6)
-        else:
-            y_ticks = np.arange(0, 1.1, 0.1)
+        ax.set_xscale('log')
+
+        ax.set_xlim(left=param_range[param_range > 0].min() * 0.5, right=param_range.max() * 1.2)
+        ax.set_ylim(bottom=0, top=1.0)
+
+        y_ticks = np.arange(0, 1.1, 0.1)
+        ax.set_yticks(y_ticks)
 
         ess_line = np.full_like(param_range, self.payoffs.ess)
         plt.plot(param_range, ess_line, 'r--', linewidth=1, alpha=0.7, label=f'y = ESS ({self.payoffs.ess:.2f})')
         plt.legend()
 
-        ax.set_xticks(x_ticks)
-        ax.set_yticks(y_ticks)
         ax.grid(True, which="both", linestyle="--", alpha=0.6)
         ax.minorticks_on()
 

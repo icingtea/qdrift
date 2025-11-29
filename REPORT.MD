@@ -152,7 +152,7 @@ All simulation runs funnel through a single **`Sandbox`** class, which handles i
 For parameter sweeps, the code employs `multiprocessing.Pool` to parallelize multiple sandbox instances.
 Each worker reads the TOML config and writes back convergence results.
 This massively speeds up parametric plots.
-I have future plans to rewrite this project in C++ to take better advantage of threading, considering `multiprocessing` involves huge overheads via `fork()` syscalls and child process creation.
+I have future plans to rewrite this project in C++/Rust to take better advantage of threading, considering `multiprocessing` involves huge overheads via `fork()` syscalls and child process creation.
 
 ### **4.5 Graphing**
 
@@ -226,6 +226,15 @@ epsilon_decay_rate = 0.9999
 * **γ = 0:** only immediate payoffs matter (suitable for a one-shot symmetric game).
 * **α, ε decay = 0.9999:** extremely slow decay encourages early exploration and stable convergence, therefore letting expectations settle before freezing learning.
 
+### **6.1 Example Runs:***
+* For `B = 3` and `C = 2`:
+![32](runs/RUN_3_2_IDEAL.png)
+* For `B = 4` and `C = 2`:
+![32](runs/RUN_4_2_IDEAL.png)
+* `paramtest` epsilon decay:
+![32](epsilon_decay_rate_vs_convergence.png)
+* `paramtest` gamma:
+![32](gamma_vs_convergence.png)
 ---
 
 ## **7. Discussion**
@@ -234,11 +243,11 @@ This experiment shows that **Q-Learning can recover mixed ESS behaviour** in lar
 The mismatch between small-n runs and ESS predictions comes directly from sampling noise, random pairing, and asynchronous decays — all of which vanish in the mean-field limit.
 
 The final dynamics resemble a noisy discretization of the replicator equation:
-[
-x_{t+1} - x_t \approx \α_t, x_t(1-x_t),(f_C - f_D) + \text{noise}.
-]
-As (n) and (1/\α_t) grow, the noise term shrinks, and (x_t \to x^*).
+$$
+x_{t+1} - x_t \approx \alpha_t \cdot x_t(1-x_t) \cdot (f_C - f_D) + \text{noise}
+$$
 
+As $n$ and $1/\alpha_t$ grow, the noise term shrinks, and $x_t \to x^*$.
 ---
 
 ## **8. Conclusion**
